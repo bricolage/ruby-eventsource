@@ -95,7 +95,9 @@ module SSE
           last_event_id: nil,
           proxy: nil,
           logger: nil,
-          socket_factory: nil)
+          socket_factory: nil,
+          http_method: 'GET',
+          body: nil)
       @uri = URI(uri)
       @stopped = Concurrent::AtomicBoolean.new(false)
 
@@ -103,6 +105,8 @@ module SSE
       @connect_timeout = connect_timeout
       @read_timeout = read_timeout
       @logger = logger || default_logger
+      @http_method = http_method
+      @body = body
       http_client_options = {}
       if socket_factory
         http_client_options["socket_class"] = socket_factory
@@ -144,6 +148,10 @@ module SSE
       Thread.new do
         run_stream
       end
+    end
+
+    def connection
+      @cxn
     end
 
     #
@@ -263,10 +271,12 @@ module SSE
         end
         cxn = nil
         begin
-          @logger.info { "Connecting to event stream at #{@uri}" }
-          cxn = @http_client.request("GET", @uri, {
+          @logger.info { "Connecting to event stream with #{@http_method} at #{@uri}" }
+          request_options = {
             headers: build_headers
-          })
+          }
+          request_options[:body] = @body if @body
+          cxn = @http_client.request(@http_method, @uri, request_options)
           if cxn.status.code == 200
             content_type = cxn.headers["content-type"]
             if content_type && content_type.start_with?("text/event-stream")
